@@ -1,12 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import OpenAI from 'openai';
 import { getAuth } from '@clerk/nextjs/server';
 import { getRemainingQuota, incrementQuota } from '@/lib/quota';
 
-const client = new OpenAI({
-  apiKey: process.env.ZZZ_API_KEY,
-  baseURL: 'https://zzztoken.cn/v1',
-});
+const BASE_URL = process.env.ZZZ_API_BASE_URL || 'https://zzztoken.cn/v1';
 
 export default async function handler(
   req: NextApiRequest,
@@ -107,12 +103,32 @@ export default async function handler(
     let lastError = '';
     for (const model of modelNames) {
       try {
-        const response = await client.chat.completions.create({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
+        const response = await fetch(`${BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.ZZZ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.7,
+          }),
         });
-        const text = response.choices[0]?.message?.content || '';
+
+        const responseBody = await response.text();
+
+        if (!response.ok) {
+          console.error(
+            `Model ${model} failed: HTTP ${response.status} ${response.statusText}`,
+            responseBody.slice(0, 500)
+          );
+          lastError = `HTTP ${response.status}: ${responseBody.slice(0, 200)}`;
+          continue;
+        }
+
+        const json = JSON.parse(responseBody);
+        const text = json.choices?.[0]?.message?.content || '';
         const newRemaining = await incrementQuota(userId);
         return res.status(200).json({ result: text, remaining: newRemaining });
       } catch (err: any) {

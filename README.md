@@ -38,6 +38,12 @@ ZZZ_API_KEY=sk-...
 MODEL_NAME=moonshot-v1-8k
 ```
 
+如果使用的不是 `zzztoken.cn`，还可以自定义 API 地址：
+
+```
+ZZZ_API_BASE_URL=https://你的-api-地址/v1
+```
+
 模型名可以根据你的 API 供应商支持情况调整，常见可选项：
 - `moonshot-v1-8k`
 - `gpt-4o-mini`
