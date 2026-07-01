@@ -12,12 +12,20 @@ body {
   background: #fafafa;
 }
 
-button {
-  outline: none;
+button,
+button:focus,
+button:active,
+button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+button::-moz-focus-inner {
+  border: 0;
 }
 
 button:focus-visible {
-  outline: 2px solid #FF2442;
+  outline: 2px solid #FF2442 !important;
   outline-offset: 2px;
 }
 
