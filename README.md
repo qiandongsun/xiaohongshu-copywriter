@@ -53,7 +53,24 @@ ZZZ_API_BASE_URL=https://你的-api-地址/v1
 
 如果不知道支持哪些模型，可以访问 `https://zzztoken.cn/v1/models` 查询。
 
-### 3. 启动开发服务器
+### 3. 配置 Redis（额度与历史记录持久化）
+
+项目使用 [Upstash Redis](https://upstash.com/docs/redis/overall/getstarted) 来持久化用户每日额度与生成历史。
+如果不配置 Redis，额度与历史记录会存在服务器内存里，每次刷新/重启后丢失。
+
+获取 Redis 凭证：
+
+1. 访问 [Upstash Console](https://console.upstash.com/redis)（或从 Vercel Marketplace 安装 Upstash Redis）。
+2. 创建一个 Redis 数据库。
+3. 进入数据库详情页，复制 **REST URL** 和 **REST TOKEN**。
+4. 填入 `.env.local`：
+
+```env
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your_token
+```
+
+### 4. 启动开发服务器
 
 ```bash
 npm run dev
@@ -66,7 +83,10 @@ npm run dev
 1. 把项目推送到 GitHub
 2. 登录 [Vercel](https://vercel.com)
 3. 点击 "Add New Project"，导入 GitHub 仓库
-4. 在 Environment Variables 中添加 `ZZZ_API_KEY`
+4. 在 Environment Variables 中添加：
+   - `ZZZ_API_KEY`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
 5. 点击 Deploy
 
 部署完成后，你就拥有了一个可访问的在线工具。
