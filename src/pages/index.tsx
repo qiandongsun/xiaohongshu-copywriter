@@ -463,8 +463,16 @@ export default function Home() {
                 onClick={handleGenerate}
                 disabled={!canGenerate || loading}
               >
-                {loading ? '生成中...' : isPro ? '生成文案' : `生成文案（剩余 ${remaining} 次）`}
+                {loading ? 'AI 正在创作中，请稍候...' : isPro ? '生成文案' : `生成文案（剩余 ${remaining} 次）`}
               </button>
+            )}
+
+            {loading && (
+              <div style={styles.loadingCard}>
+                <div style={styles.loadingSpinner} />
+                <p style={styles.loadingText}>正在构思小红书文案 ✍️</p>
+                <p style={styles.loadingSub}>根据主题、赛道和风格生成多个版本，大约需要 5-15 秒</p>
+              </div>
             )}
 
             {resultVersions.length > 0 && (
@@ -712,6 +720,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '24px',
   },
   loadingButton: { opacity: 0.7, cursor: 'not-allowed' },
+  loadingCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#fff8f9',
+    borderRadius: '16px',
+    padding: '40px 24px',
+    marginBottom: '24px',
+    border: '2px dashed #ffcdd6',
+  },
+  loadingSpinner: {
+    width: '40px',
+    height: '40px',
+    border: '3px solid #ffe4e8',
+    borderTop: '3px solid #FF2442',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingText: {
+    marginTop: '16px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#FF2442',
+  },
+  loadingSub: {
+    marginTop: '8px',
+    fontSize: '13px',
+    color: '#999',
+    textAlign: 'center',
+  },
   error: { color: '#FF2442', marginBottom: '16px', fontSize: '14px' },
   resultSection: {
     background: '#fff8f9',
