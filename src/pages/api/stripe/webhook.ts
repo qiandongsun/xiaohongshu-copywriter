@@ -66,20 +66,17 @@ export default async function handler(
         typeof subscription.customer === 'string'
           ? subscription.customer
           : subscription.customer.id;
+      const userId = subscription.metadata?.userId;
 
-      const client = await clerkClient();
-      const users = await client.users.getUserList({
-        publicMetadata: { stripeCustomerId: customerId },
-      });
-
-      for (const user of users.data) {
-        await client.users.updateUserMetadata(user.id, {
+      if (userId) {
+        const client = await clerkClient();
+        await client.users.updateUserMetadata(userId, {
           publicMetadata: {
             plan: 'free',
             stripeCustomerId: customerId,
           },
         });
-        console.log(`User ${user.id} downgraded to free`);
+        console.log(`User ${userId} downgraded to free`);
       }
     }
 

@@ -130,7 +130,7 @@ export default function Home() {
             {checkingAuth ? (
               <span style={styles.authHint}>加载中...</span>
             ) : isLoggedIn ? (
-              <UserButton afterSignOutUrl="/" />
+              <UserButton />
             ) : (
               <SignInButton mode="modal">
                 <button style={styles.signInButton}>登录</button>
