@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth, SignInButton, UserButton } from '@clerk/nextjs';
 import { formatRemaining } from '@/lib/quota-shared';
+import type { HistoryItem } from '@/lib/history';
 
 const categories = [
   { id: '美妆', name: '美妆' },
@@ -25,20 +26,48 @@ const contentTypes = [
   { id: 'both', name: '标题+正文' },
 ];
 
+const versionOptions = [
+  { id: 1, name: '1 个' },
+  { id: 3, name: '3 个' },
+  { id: 5, name: '5 个' },
+];
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleString('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function truncate(str: string, max: number): string {
+  return str.length > max ? str.slice(0, max) + '...' : str;
+}
+
 export default function Home() {
   const { isLoaded, userId } = useAuth();
   const [topic, setTopic] = useState('');
   const [category, setCategory] = useState('美妆');
   const [style, setStyle] = useState('干货型');
   const [contentType, setContentType] = useState('both');
+  const [versions, setVersions] = useState(3);
   const [result, setResult] = useState('');
+  const [resultVersions, setResultVersions] = useState<string[]>([]);
+  const [activeVersion, setActiveVersion] = useState(0);
+  const [currentHistoryItem, setCurrentHistoryItem] = useState<HistoryItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copiedMap, setCopiedMap] = useState<Record<string, boolean>>({});
   const [remaining, setRemaining] = useState(3);
   const [isPro, setIsPro] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedText, setEditedText] = useState('');
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -56,7 +85,31 @@ export default function Home() {
       .catch((err) => {
         console.error('Failed to fetch quota:', err);
       });
+
+    loadHistory();
   }, [isLoaded, userId]);
+
+  useEffect(() => {
+    // 标题默认 5 个变体，其他默认 3 个
+    setVersions(contentType === 'title' ? 5 : 3);
+    setActiveVersion(0);
+  }, [contentType]);
+
+  const loadHistory = async () => {
+    if (!userId) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch('/api/history');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.history)) {
+        setHistory(data.history);
+      }
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!topic.trim()) {
@@ -66,12 +119,16 @@ export default function Home() {
     setLoading(true);
     setError('');
     setResult('');
+    setResultVersions([]);
+    setActiveVersion(0);
+    setCurrentHistoryItem(null);
+    setIsEditing(false);
 
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, category, style, contentType }),
+        body: JSON.stringify({ topic, category, style, contentType, versions }),
       });
 
       const data = await res.json();
@@ -81,9 +138,17 @@ export default function Home() {
         }
         throw new Error(data.detail || data.error || '生成失败');
       }
-      setResult(data.result);
+
+      const versionsList = Array.isArray(data.versions) ? data.versions : [data.result];
+      setResult(data.result || versionsList[0] || '');
+      setResultVersions(versionsList);
+      setActiveVersion(0);
       if (typeof data.remaining === 'number') {
         setRemaining(data.remaining);
+      }
+      if (data.historyItem) {
+        setCurrentHistoryItem(data.historyItem);
+        setHistory((prev) => [data.historyItem, ...prev]);
       }
     } catch (err: any) {
       setError(err.message || '生成失败，请稍后重试');
@@ -92,12 +157,13 @@ export default function Home() {
     }
   };
 
-  const handleCopy = () => {
-    if (result) {
-      navigator.clipboard.writeText(result);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  const handleCopy = (text: string, key: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedMap((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopiedMap((prev) => ({ ...prev, [key]: false }));
+    }, 2000);
   };
 
   const handleUpgrade = async () => {
@@ -118,8 +184,120 @@ export default function Home() {
     }
   };
 
+  const toggleFavorite = async (item: HistoryItem) => {
+    try {
+      const res = await fetch('/api/history', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, favorite: !item.favorite }),
+      });
+      const data = await res.json();
+      if (res.ok && data.historyItem) {
+        setHistory((prev) =>
+          prev.map((h) => (h.id === item.id ? data.historyItem : h))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  };
+
+  const regenerateFromHistory = async (item: HistoryItem) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/history/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 429) setShowUpgrade(true);
+        throw new Error(data.detail || data.error || '再次生成失败');
+      }
+      const versionsList = Array.isArray(data.versions) ? data.versions : [data.result];
+      setResult(data.result || versionsList[0] || '');
+      setResultVersions(versionsList);
+      setActiveVersion(0);
+      setTopic(item.topic);
+      setCategory(item.category);
+      setStyle(item.style);
+      setContentType(item.contentType as any);
+      if (typeof data.remaining === 'number') setRemaining(data.remaining);
+      if (data.historyItem) {
+        setCurrentHistoryItem(data.historyItem);
+        setHistory((prev) => [data.historyItem, ...prev]);
+      }
+    } catch (err: any) {
+      setError(err.message || '再次生成失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteHistoryItem = async (id: string) => {
+    try {
+      const res = await fetch(`/api/history?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setHistory((prev) => prev.filter((h) => h.id !== id));
+      }
+    } catch (err) {
+      console.error('Failed to delete history:', err);
+    }
+  };
+
+  const startEdit = () => {
+    setEditedText(resultVersions[activeVersion] || result);
+    setIsEditing(true);
+  };
+
+  const saveEdit = async () => {
+    const newVersions = [...resultVersions];
+    newVersions[activeVersion] = editedText;
+    setResultVersions(newVersions);
+    if (activeVersion === 0) setResult(editedText);
+    setIsEditing(false);
+
+    if (currentHistoryItem) {
+      try {
+        await fetch('/api/history', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentHistoryItem.id, result: editedText }),
+        });
+        loadHistory();
+      } catch (err) {
+        console.error('Failed to save edit:', err);
+      }
+    }
+  };
+
   const isLoggedIn = !!userId;
   const canGenerate = isLoggedIn && (isPro || remaining > 0);
+
+  const renderVersionTabs = () => {
+    if (resultVersions.length <= 1) return null;
+    return (
+      <div style={styles.versionTabs}>
+        {resultVersions.map((_, idx) => (
+          <button
+            key={idx}
+            style={{
+              ...styles.versionTab,
+              ...(activeVersion === idx ? styles.versionTabActive : {}),
+            }}
+            onClick={() => {
+              setActiveVersion(idx);
+              setIsEditing(false);
+            }}
+          >
+            版本 {idx + 1}
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div style={styles.container}>
@@ -195,9 +373,27 @@ export default function Home() {
                       ...styles.optionButton,
                       ...(contentType === t.id ? styles.activeButton : {}),
                     }}
-                    onClick={() => setContentType(t.id)}
+                    onClick={() => setContentType(t.id as any)}
                   >
                     {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.section}>
+              <label style={styles.label}>生成数量</label>
+              <div style={styles.buttonGroup}>
+                {versionOptions.map((v) => (
+                  <button
+                    key={v.id}
+                    style={{
+                      ...styles.optionButton,
+                      ...(versions === v.id ? styles.activeButton : {}),
+                    }}
+                    onClick={() => setVersions(v.id)}
+                  >
+                    {v.name}
                   </button>
                 ))}
               </div>
@@ -250,15 +446,122 @@ export default function Home() {
               </button>
             )}
 
-            {result && (
+            {resultVersions.length > 0 && (
               <div style={styles.resultSection}>
                 <div style={styles.resultHeader}>
                   <span style={styles.resultTitle}>生成结果</span>
-                  <button style={styles.copyButton} onClick={handleCopy}>
-                    {copied ? '已复制' : '复制全部'}
-                  </button>
+                  <div style={styles.resultActions}>
+                    {isEditing ? (
+                      <>
+                        <button
+                          style={{ ...styles.copyButton, marginRight: 8 }}
+                          onClick={() => setIsEditing(false)}
+                        >
+                          取消
+                        </button>
+                        <button style={styles.copyButton} onClick={saveEdit}>保存</button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          style={{ ...styles.copyButton, marginRight: 8 }}
+                          onClick={startEdit}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          style={styles.copyButton}
+                          onClick={() =>
+                            handleCopy(
+                              resultVersions[activeVersion] || result,
+                              `version-${activeVersion}`
+                            )
+                          }
+                        >
+                          {copiedMap[`version-${activeVersion}`] ? '已复制' : '复制全部'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <pre style={styles.resultContent}>{result}</pre>
+
+                {renderVersionTabs()}
+
+                {isEditing ? (
+                  <textarea
+                    style={{ ...styles.input, minHeight: 200, marginTop: 12 }}
+                    value={editedText}
+                    onChange={(e) => setEditedText(e.target.value)}
+                  />
+                ) : (
+                  <pre style={styles.resultContent}>
+                    {resultVersions[activeVersion] || result}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            <div style={styles.historyToggle}>
+              <button
+                style={styles.historyToggleButton}
+                onClick={() => setShowHistory((s) => !s)}
+              >
+                {showHistory ? '收起历史记录' : `展开历史记录 (${history.length})`}
+              </button>
+            </div>
+
+            {showHistory && (
+              <div style={styles.historySection}>
+                {historyLoading ? (
+                  <p style={styles.historyEmpty}>加载中...</p>
+                ) : history.length === 0 ? (
+                  <p style={styles.historyEmpty}>暂无生成记录</p>
+                ) : (
+                  history.map((item) => (
+                    <div key={item.id} style={styles.historyItem}>
+                      <div style={styles.historyItemHeader}>
+                        <div>
+                          <span style={styles.historyTopic}>{truncate(item.topic, 20)}</span>
+                          <span style={styles.historyMeta}>
+                            {' '}
+                            · {item.category} · {item.style} · {formatTime(item.createdAt)}
+                          </span>
+                        </div>
+                        <button
+                          style={{
+                            ...styles.favoriteButton,
+                            ...(item.favorite ? styles.favoriteActive : {}),
+                          }}
+                          onClick={() => toggleFavorite(item)}
+                        >
+                          {item.favorite ? '★' : '☆'}
+                        </button>
+                      </div>
+                      <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
+                      <div style={styles.historyActions}>
+                        <button
+                          style={styles.historyActionButton}
+                          onClick={() => handleCopy(item.result, `history-${item.id}`)}
+                        >
+                          {copiedMap[`history-${item.id}`] ? '已复制' : '复制'}
+                        </button>
+                        <button
+                          style={styles.historyActionButton}
+                          onClick={() => regenerateFromHistory(item)}
+                          disabled={loading}
+                        >
+                          再次生成
+                        </button>
+                        <button
+                          style={styles.historyActionButton}
+                          onClick={() => deleteHistoryItem(item.id)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -363,6 +666,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '12px',
   },
   resultTitle: { fontWeight: 'bold', color: '#333' },
+  resultActions: { display: 'flex', alignItems: 'center' },
   copyButton: {
     padding: '8px 16px',
     borderRadius: '8px',
@@ -379,6 +683,109 @@ const styles: { [key: string]: React.CSSProperties } = {
     lineHeight: '1.8',
     color: '#333',
     fontFamily: 'inherit',
+  },
+  versionTabs: {
+    display: 'flex',
+    gap: '8px',
+    marginTop: '12px',
+    marginBottom: '12px',
+    flexWrap: 'wrap',
+  },
+  versionTab: {
+    padding: '6px 14px',
+    borderRadius: '16px',
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    color: '#666',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  versionTabActive: {
+    background: '#FF2442',
+    color: '#fff',
+    borderColor: '#FF2442',
+  },
+  historyToggle: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '24px',
+  },
+  historyToggleButton: {
+    padding: '8px 20px',
+    borderRadius: '20px',
+    border: '1px solid #FF2442',
+    background: '#fff',
+    color: '#FF2442',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  historySection: {
+    background: '#fff8f9',
+    borderRadius: '16px',
+    padding: '16px',
+    marginBottom: '24px',
+  },
+  historyEmpty: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: '14px',
+    padding: '20px',
+  },
+  historyItem: {
+    background: '#fff',
+    borderRadius: '12px',
+    padding: '14px',
+    marginBottom: '12px',
+  },
+  historyItemHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  historyTopic: {
+    fontWeight: 'bold',
+    color: '#333',
+    fontSize: '14px',
+  },
+  historyMeta: {
+    color: '#999',
+    fontSize: '12px',
+  },
+  historyContent: {
+    whiteSpace: 'pre-wrap',
+    wordWrap: 'break-word',
+    fontSize: '13px',
+    lineHeight: '1.6',
+    color: '#666',
+    fontFamily: 'inherit',
+    marginBottom: '10px',
+  },
+  historyActions: {
+    display: 'flex',
+    gap: '8px',
+  },
+  historyActionButton: {
+    padding: '6px 12px',
+    borderRadius: '8px',
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    color: '#666',
+    fontSize: '13px',
+    cursor: 'pointer',
+  },
+  favoriteButton: {
+    padding: '4px 8px',
+    borderRadius: '6px',
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    color: '#999',
+    fontSize: '16px',
+    cursor: 'pointer',
+  },
+  favoriteActive: {
+    color: '#FF2442',
+    borderColor: '#FF2442',
   },
   footer: {
     display: 'flex',

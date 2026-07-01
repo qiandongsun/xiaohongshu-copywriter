@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getAuth } from '@clerk/nextjs/server';
 import { getRemainingQuota, incrementQuota } from '@/lib/quota';
 import { buildPrompt, generateContent } from '@/lib/generate';
-import { saveHistory } from '@/lib/history';
+import { getHistoryItem, saveHistory } from '@/lib/history';
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,25 +14,20 @@ export default async function handler(
 
   const { userId } = getAuth(req);
   if (!userId) {
-    return res.status(401).json({ error: '请先登录后再生成文案' });
+    return res.status(401).json({ error: '请先登录' });
   }
 
-  const { topic, category, style, contentType, versions: versionsRaw } = req.body;
-
-  if (!topic || !category || !style || !contentType) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: '缺少 id' });
   }
-
-  const contentTypeValue: 'title' | 'content' | 'both' =
-    contentType === 'title' || contentType === 'content' || contentType === 'both'
-      ? contentType
-      : 'both';
-
-  // 标题默认 5 个变体，正文/完整默认 3 个
-  let versions = Number(versionsRaw) || (contentTypeValue === 'title' ? 5 : 3);
-  versions = Math.max(1, Math.min(5, versions));
 
   try {
+    const item = await getHistoryItem(userId, id);
+    if (!item) {
+      return res.status(404).json({ error: '历史记录不存在' });
+    }
+
     const remaining = await getRemainingQuota(userId);
     if (remaining <= 0) {
       return res.status(429).json({
@@ -41,10 +36,19 @@ export default async function handler(
       });
     }
 
+    const contentTypeValue: 'title' | 'content' | 'both' =
+      item.contentType === 'title' ||
+      item.contentType === 'content' ||
+      item.contentType === 'both'
+        ? item.contentType
+        : 'both';
+
+    const versions = Math.min(item.versions.length || 3, 5);
+
     const prompt = buildPrompt({
-      topic,
-      category,
-      style,
+      topic: item.topic,
+      category: item.category,
+      style: item.style,
       contentType: contentTypeValue,
       versions,
     });
@@ -55,9 +59,9 @@ export default async function handler(
     const newRemaining = await incrementQuota(userId);
 
     const historyItem = await saveHistory(userId, {
-      topic,
-      category,
-      style,
+      topic: item.topic,
+      category: item.category,
+      style: item.style,
       contentType: contentTypeValue,
       result,
       versions: results,
@@ -70,7 +74,7 @@ export default async function handler(
       historyItem,
     });
   } catch (error: any) {
-    console.error('Generation error:', error);
+    console.error('Regenerate error:', error);
     const message = error?.message || '未知错误';
     res.status(500).json({ error: '生成失败', detail: message });
   }

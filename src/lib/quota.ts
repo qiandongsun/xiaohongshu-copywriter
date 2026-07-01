@@ -6,7 +6,7 @@ const DAILY_FREE_LIMIT = 3;
 let redis: Redis | null = null;
 let redisError: string | null = null;
 
-function getRedis(): Redis | null {
+export function getRedis(): Redis | null {
   if (redis) return redis;
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
