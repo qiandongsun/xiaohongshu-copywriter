@@ -66,6 +66,7 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
 
@@ -271,6 +272,18 @@ export default function Home() {
         console.error('Failed to save edit:', err);
       }
     }
+  };
+
+  const toggleExpandHistory = (id: string) => {
+    setExpandedHistoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const isLoggedIn = !!userId;
@@ -517,50 +530,88 @@ export default function Home() {
                 ) : history.length === 0 ? (
                   <p style={styles.historyEmpty}>暂无生成记录</p>
                 ) : (
-                  history.map((item) => (
-                    <div key={item.id} style={styles.historyItem}>
-                      <div style={styles.historyItemHeader}>
-                        <div>
-                          <span style={styles.historyTopic}>{truncate(item.topic, 20)}</span>
-                          <span style={styles.historyMeta}>
-                            {' '}
-                            · {item.category} · {item.style} · {formatTime(item.createdAt)}
-                          </span>
+                  history.map((item) => {
+                    const isExpanded = expandedHistoryIds.has(item.id);
+                    const hasVersions = item.versions && item.versions.length > 1;
+                    return (
+                      <div key={item.id} style={styles.historyItem}>
+                        <div style={styles.historyItemHeader}>
+                          <div>
+                            <span style={styles.historyTopic}>{truncate(item.topic, 20)}</span>
+                            <span style={styles.historyMeta}>
+                              {' '}
+                              · {item.category} · {item.style} · {formatTime(item.createdAt)}
+                              {hasVersions && (
+                                <span style={styles.historyVersionCount}> · {item.versions.length} 个版本</span>
+                              )}
+                            </span>
+                          </div>
+                          <button
+                            style={{
+                              ...styles.favoriteButton,
+                              ...(item.favorite ? styles.favoriteActive : {}),
+                            }}
+                            onClick={() => toggleFavorite(item)}
+                          >
+                            {item.favorite ? '★' : '☆'}
+                          </button>
                         </div>
-                        <button
-                          style={{
-                            ...styles.favoriteButton,
-                            ...(item.favorite ? styles.favoriteActive : {}),
-                          }}
-                          onClick={() => toggleFavorite(item)}
-                        >
-                          {item.favorite ? '★' : '☆'}
-                        </button>
+
+                        {!isExpanded && (
+                          <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
+                        )}
+
+                        {isExpanded && hasVersions && (
+                          <div style={styles.historyVersions}>
+                            {item.versions.map((version, idx) => (
+                              <div key={idx} style={styles.historyVersionItem}>
+                                <div style={styles.historyVersionHeader}>
+                                  <span style={styles.historyVersionTitle}>版本 {idx + 1}</span>
+                                  <button
+                                    style={styles.historyActionButton}
+                                    onClick={() => handleCopy(version, `history-${item.id}-${idx}`)}
+                                  >
+                                    {copiedMap[`history-${item.id}-${idx}`] ? '已复制' : '复制'}
+                                  </button>
+                                </div>
+                                <pre style={styles.historyVersionContent}>{version}</pre>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={styles.historyActions}>
+                          {hasVersions && (
+                            <button
+                              style={styles.historyActionButton}
+                              onClick={() => toggleExpandHistory(item.id)}
+                            >
+                              {isExpanded ? '收起版本' : '查看版本'}
+                            </button>
+                          )}
+                          <button
+                            style={styles.historyActionButton}
+                            onClick={() => handleCopy(item.result, `history-${item.id}`)}
+                          >
+                            {copiedMap[`history-${item.id}`] ? '已复制' : '复制首条'}
+                          </button>
+                          <button
+                            style={styles.historyActionButton}
+                            onClick={() => regenerateFromHistory(item)}
+                            disabled={loading}
+                          >
+                            再次生成
+                          </button>
+                          <button
+                            style={styles.historyActionButton}
+                            onClick={() => deleteHistoryItem(item.id)}
+                          >
+                            删除
+                          </button>
+                        </div>
                       </div>
-                      <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
-                      <div style={styles.historyActions}>
-                        <button
-                          style={styles.historyActionButton}
-                          onClick={() => handleCopy(item.result, `history-${item.id}`)}
-                        >
-                          {copiedMap[`history-${item.id}`] ? '已复制' : '复制'}
-                        </button>
-                        <button
-                          style={styles.historyActionButton}
-                          onClick={() => regenerateFromHistory(item)}
-                          disabled={loading}
-                        >
-                          再次生成
-                        </button>
-                        <button
-                          style={styles.historyActionButton}
-                          onClick={() => deleteHistoryItem(item.id)}
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -760,6 +811,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666',
     fontFamily: 'inherit',
     marginBottom: '10px',
+  },
+  historyVersionCount: {
+    color: '#FF2442',
+    fontWeight: 600,
+  },
+  historyVersions: {
+    marginTop: '12px',
+    marginBottom: '12px',
+  },
+  historyVersionItem: {
+    background: '#fff8f9',
+    borderRadius: '10px',
+    padding: '12px',
+    marginBottom: '10px',
+  },
+  historyVersionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '8px',
+  },
+  historyVersionTitle: {
+    fontWeight: 'bold',
+    color: '#FF2442',
+    fontSize: '13px',
+  },
+  historyVersionContent: {
+    whiteSpace: 'pre-wrap',
+    wordWrap: 'break-word',
+    fontSize: '13px',
+    lineHeight: '1.7',
+    color: '#333',
+    fontFamily: 'inherit',
+    margin: 0,
   },
   historyActions: {
     display: 'flex',
