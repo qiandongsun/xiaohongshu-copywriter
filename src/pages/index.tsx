@@ -360,6 +360,7 @@ export default function Home() {
               setActiveVersion(idx);
               setIsEditing(false);
             }}
+            onMouseDown={(e) => e.preventDefault()}
           >
             版本 {idx + 1}
           </button>
@@ -433,6 +434,7 @@ export default function Home() {
                       ...(category === c.id ? styles.activeButton : {}),
                     }}
                     onClick={() => setCategory(c.id)}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     {c.name}
                   </button>
@@ -459,6 +461,7 @@ export default function Home() {
                       ...(contentType === t.id ? styles.activeButton : {}),
                     }}
                     onClick={() => setContentType(t.id as any)}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     {t.name}
                   </button>
@@ -477,6 +480,7 @@ export default function Home() {
                       ...(versions === v.id ? styles.activeButton : {}),
                     }}
                     onClick={() => setVersions(v.id)}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     {v.name}
                   </button>
@@ -495,6 +499,7 @@ export default function Home() {
                       ...(style === s.id ? styles.activeButton : {}),
                     }}
                     onClick={() => setStyle(s.id)}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     {s.name}
                   </button>
@@ -659,6 +664,7 @@ export default function Home() {
                                       ...(activeIdx === idx ? styles.historyVersionTabActive : {}),
                                     }}
                                     onClick={() => setHistoryVersion(item.id, idx)}
+                                    onMouseDown={(e) => e.preventDefault()}
                                   >
                                     版本 {idx + 1}
                                   </button>
