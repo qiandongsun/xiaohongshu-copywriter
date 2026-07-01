@@ -811,7 +811,9 @@ const styles: { [key: string]: React.CSSProperties } = {
   optionButton: {
     padding: '10px 18px',
     borderRadius: '20px',
-    border: '1px solid #e0e0e0',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#e0e0e0',
     background: '#fff',
     color: '#666',
     fontSize: '14px',
@@ -825,6 +827,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   activeButton: {
     background: '#FF2442',
     color: '#fff',
+    borderWidth: '1px',
+    borderStyle: 'solid',
     borderColor: '#FF2442',
     outline: 'none',
     WebkitAppearance: 'none',
