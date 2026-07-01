@@ -66,7 +66,8 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyActiveVersion, setHistoryActiveVersion] = useState<Record<string, number>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
 
@@ -274,16 +275,20 @@ export default function Home() {
     }
   };
 
-  const toggleExpandHistory = (id: string) => {
-    setExpandedHistoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const filteredHistory = history.filter((item) => {
+    const q = historySearch.trim();
+    if (!q) return true;
+    return (
+      item.topic.includes(q) ||
+      item.category.includes(q) ||
+      item.style.includes(q) ||
+      item.result.includes(q) ||
+      item.versions.some((v) => v.includes(q))
+    );
+  });
+
+  const setHistoryVersion = (id: string, idx: number) => {
+    setHistoryActiveVersion((prev) => ({ ...prev, [id]: idx }));
   };
 
   const isLoggedIn = !!userId;
@@ -540,14 +545,24 @@ export default function Home() {
                     </button>
                   </div>
                   <div style={styles.drawerContent}>
+                    <div style={styles.historySearchBox}>
+                      <input
+                        style={styles.historySearchInput}
+                        placeholder="搜索主题、赛道、风格或内容..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                      />
+                    </div>
                     {historyLoading ? (
                       <p style={styles.historyEmpty}>加载中...</p>
-                    ) : history.length === 0 ? (
-                      <p style={styles.historyEmpty}>暂无生成记录</p>
+                    ) : filteredHistory.length === 0 ? (
+                      <p style={styles.historyEmpty}>
+                        {historySearch ? '没有找到匹配的记录' : '暂无生成记录'}
+                      </p>
                     ) : (
-                      history.map((item) => {
-                        const isExpanded = expandedHistoryIds.has(item.id);
+                      filteredHistory.map((item) => {
                         const hasVersions = item.versions && item.versions.length > 1;
+                        const activeIdx = historyActiveVersion[item.id] || 0;
                         return (
                           <div key={item.id} style={styles.historyItem}>
                             <div style={styles.historyItemHeader}>
@@ -572,43 +587,38 @@ export default function Home() {
                               </button>
                             </div>
 
-                            {!isExpanded && (
-                              <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
-                            )}
-
-                            {isExpanded && hasVersions && (
-                              <div style={styles.historyVersions}>
-                                {item.versions.map((version, idx) => (
-                                  <div key={idx} style={styles.historyVersionItem}>
-                                    <div style={styles.historyVersionHeader}>
-                                      <span style={styles.historyVersionTitle}>版本 {idx + 1}</span>
-                                      <button
-                                        style={styles.historyActionButton}
-                                        onClick={() => handleCopy(version, `history-${item.id}-${idx}`)}
-                                      >
-                                        {copiedMap[`history-${item.id}-${idx}`] ? '已复制' : '复制'}
-                                      </button>
-                                    </div>
-                                    <pre style={styles.historyVersionContent}>{version}</pre>
-                                  </div>
+                            {hasVersions && (
+                              <div style={styles.historyVersionTabs}>
+                                {item.versions.map((_, idx) => (
+                                  <button
+                                    key={idx}
+                                    style={{
+                                      ...styles.historyVersionTab,
+                                      ...(activeIdx === idx ? styles.historyVersionTabActive : {}),
+                                    }}
+                                    onClick={() => setHistoryVersion(item.id, idx)}
+                                  >
+                                    版本 {idx + 1}
+                                  </button>
                                 ))}
                               </div>
                             )}
 
+                            <pre style={styles.historyContent}>
+                              {item.versions[activeIdx] || item.result}
+                            </pre>
+
                             <div style={styles.historyActions}>
-                              {hasVersions && (
-                                <button
-                                  style={styles.historyActionButton}
-                                  onClick={() => toggleExpandHistory(item.id)}
-                                >
-                                  {isExpanded ? '收起版本' : '查看版本'}
-                                </button>
-                              )}
                               <button
                                 style={styles.historyActionButton}
-                                onClick={() => handleCopy(item.result, `history-${item.id}`)}
+                                onClick={() =>
+                                  handleCopy(
+                                    item.versions[activeIdx] || item.result,
+                                    `history-${item.id}-${activeIdx}`
+                                  )
+                                }
                               >
-                                {copiedMap[`history-${item.id}`] ? '已复制' : '复制首条'}
+                                {copiedMap[`history-${item.id}-${activeIdx}`] ? '已复制' : '复制'}
                               </button>
                               <button
                                 style={styles.historyActionButton}
@@ -903,35 +913,36 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#FF2442',
     fontWeight: 600,
   },
-  historyVersions: {
-    marginTop: '12px',
-    marginBottom: '12px',
+  historySearchBox: {
+    marginBottom: '16px',
   },
-  historyVersionItem: {
-    background: '#fff',
-    borderRadius: '10px',
-    padding: '12px',
-    marginBottom: '10px',
+  historySearchInput: {
+    width: '100%',
+    padding: '12px 16px',
+    borderRadius: '12px',
+    border: '2px solid #ffe4e8',
+    fontSize: '14px',
+    outline: 'none',
   },
-  historyVersionHeader: {
+  historyVersionTabs: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '8px',
+    gap: '8px',
+    marginBottom: '10px',
+    flexWrap: 'wrap',
   },
-  historyVersionTitle: {
-    fontWeight: 'bold',
-    color: '#FF2442',
-    fontSize: '13px',
+  historyVersionTab: {
+    padding: '5px 12px',
+    borderRadius: '14px',
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    color: '#666',
+    fontSize: '12px',
+    cursor: 'pointer',
   },
-  historyVersionContent: {
-    whiteSpace: 'pre-wrap',
-    wordWrap: 'break-word',
-    fontSize: '13px',
-    lineHeight: '1.7',
-    color: '#333',
-    fontFamily: 'inherit',
-    margin: 0,
+  historyVersionTabActive: {
+    background: '#FF2442',
+    color: '#fff',
+    borderColor: '#FF2442',
   },
   historyActions: {
     display: 'flex',
