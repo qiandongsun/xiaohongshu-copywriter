@@ -19,7 +19,7 @@ export function buildPrompt(options: BuildPromptOptions): string {
   const { topic, category, style, contentType, versions } = options;
 
   if (contentType === 'title') {
-    return `你是一位小红书爆款标题专家。请根据以下信息生成 5 个小红书标题：
+    return `你是一位小红书爆款标题专家。请根据以下信息生成 ${versions} 个小红书标题：
 
 主题：${topic}
 赛道：${category}
@@ -32,7 +32,7 @@ export function buildPrompt(options: BuildPromptOptions): string {
 4. 标题要能激发点击欲望
 5. 不要出现"震惊""绝绝子"等过度夸张词
 
-直接输出 5 个标题，每行一个，带序号。`;
+直接输出 ${versions} 个标题，每行一个，带序号。`;
   }
 
   const versionInstruction =

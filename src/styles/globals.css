@@ -12,6 +12,15 @@ body {
   background: #fafafa;
 }
 
+button {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid #FF2442;
+  outline-offset: 2px;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);

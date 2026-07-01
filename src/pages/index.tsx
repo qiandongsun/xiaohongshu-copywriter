@@ -811,8 +811,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '14px',
     cursor: 'pointer',
     transition: 'all 0.2s',
+    outline: 'none',
   },
-  activeButton: { background: '#FF2442', color: '#fff', borderColor: '#FF2442' },
+  activeButton: { background: '#FF2442', color: '#fff', borderColor: '#FF2442', outline: 'none' },
   generateButton: {
     width: '100%',
     padding: '16px',
