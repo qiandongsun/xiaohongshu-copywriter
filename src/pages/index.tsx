@@ -11,6 +11,7 @@ const categories = [
   { id: '美食', name: '美食' },
   { id: '育儿', name: '育儿' },
   { id: '情感', name: '情感' },
+  { id: '其他', name: '其他' },
 ];
 
 const styleOptions = [
@@ -49,6 +50,7 @@ export default function Home() {
   const { isLoaded, userId } = useAuth();
   const [topic, setTopic] = useState('');
   const [category, setCategory] = useState('美妆');
+  const [customCategory, setCustomCategory] = useState('');
   const [style, setStyle] = useState('干货型');
   const [contentType, setContentType] = useState('both');
   const [versions, setVersions] = useState(3);
@@ -68,6 +70,8 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
   const [historyActiveVersion, setHistoryActiveVersion] = useState<Record<string, number>>({});
+  const [historyWorkingIds, setHistoryWorkingIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState('');
 
@@ -118,6 +122,11 @@ export default function Home() {
       setError('请输入主题');
       return;
     }
+    const finalCategory = category === '其他' ? customCategory.trim() || '其他' : category;
+    if (category === '其他' && !customCategory.trim()) {
+      setError('请输入自定义赛道');
+      return;
+    }
     setLoading(true);
     setError('');
     setResult('');
@@ -130,7 +139,7 @@ export default function Home() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, category, style, contentType, versions }),
+        body: JSON.stringify({ topic, category: finalCategory, style, contentType, versions }),
       });
 
       const data = await res.json();
@@ -205,13 +214,27 @@ export default function Home() {
   };
 
   const regenerateFromHistory = async (item: HistoryItem) => {
+    const isWorking = historyWorkingIds.has(item.id);
+    if (isWorking || loading) return;
+    setHistoryWorkingIds((prev) => {
+      const next = new Set(prev);
+      next.add(item.id);
+      return next;
+    });
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/history/regenerate', {
+      const finalCategory = item.category;
+      const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id }),
+        body: JSON.stringify({
+          topic: item.topic,
+          category: finalCategory,
+          style: item.style,
+          contentType: item.contentType,
+          versions: Math.min(item.versions.length || 3, 5),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -223,7 +246,8 @@ export default function Home() {
       setResultVersions(versionsList);
       setActiveVersion(0);
       setTopic(item.topic);
-      setCategory(item.category);
+      setCategory(categories.some((c) => c.id === item.category) ? item.category : '其他');
+      setCustomCategory(categories.some((c) => c.id === item.category) ? '' : item.category);
       setStyle(item.style);
       setContentType(item.contentType as any);
       if (typeof data.remaining === 'number') setRemaining(data.remaining);
@@ -231,21 +255,48 @@ export default function Home() {
         setCurrentHistoryItem(data.historyItem);
         setHistory((prev) => [data.historyItem, ...prev]);
       }
+      setShowHistory(false);
     } catch (err: any) {
       setError(err.message || '再次生成失败');
     } finally {
       setLoading(false);
+      setHistoryWorkingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
+  const confirmDeleteHistory = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const cancelDeleteHistory = () => {
+    setDeleteConfirmId(null);
+  };
+
   const deleteHistoryItem = async (id: string) => {
+    if (historyWorkingIds.has(id)) return;
+    setHistoryWorkingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
     try {
       const res = await fetch(`/api/history?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         setHistory((prev) => prev.filter((h) => h.id !== id));
+        setDeleteConfirmId(null);
       }
     } catch (err) {
       console.error('Failed to delete history:', err);
+    } finally {
+      setHistoryWorkingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -387,6 +438,14 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              {category === '其他' && (
+                <input
+                  style={{ ...styles.input, marginTop: '12px' }}
+                  placeholder="请输入自定义赛道，例如：数码、旅行、健身"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                />
+              )}
             </div>
 
             <div style={styles.section}>
@@ -473,10 +532,13 @@ export default function Home() {
             )}
 
             {loading && (
-              <div style={styles.loadingCard}>
-                <div style={styles.loadingSpinner} />
-                <p style={styles.loadingText}>正在构思小红书文案 ✍️</p>
-                <p style={styles.loadingSub}>根据主题、赛道和风格生成多个版本，大约需要 5-15 秒</p>
+              <div style={styles.modalOverlay}>
+                <div style={styles.modalCard}>
+                  <div style={styles.loadingSpinner} />
+                  <p style={styles.loadingText}>正在构思小红书文案 ✍️</p>
+                  <p style={styles.loadingSub}>根据主题、赛道和风格生成多个版本</p>
+                  <p style={styles.loadingSub}>大约需要 5-15 秒，请稍候...</p>
+                </div>
               </div>
             )}
 
@@ -610,26 +672,37 @@ export default function Home() {
 
                             <div style={styles.historyActions}>
                               <button
-                                style={styles.historyActionButton}
+                                style={{
+                                  ...styles.historyActionButton,
+                                  ...(historyWorkingIds.has(item.id) ? styles.historyActionButtonDisabled : {}),
+                                }}
                                 onClick={() =>
                                   handleCopy(
                                     item.versions[activeIdx] || item.result,
                                     `history-${item.id}-${activeIdx}`
                                   )
                                 }
+                                disabled={historyWorkingIds.has(item.id)}
                               >
                                 {copiedMap[`history-${item.id}-${activeIdx}`] ? '已复制' : '复制'}
                               </button>
                               <button
-                                style={styles.historyActionButton}
+                                style={{
+                                  ...styles.historyActionButton,
+                                  ...(historyWorkingIds.has(item.id) || loading ? styles.historyActionButtonDisabled : {}),
+                                }}
                                 onClick={() => regenerateFromHistory(item)}
-                                disabled={loading}
+                                disabled={historyWorkingIds.has(item.id) || loading}
                               >
-                                再次生成
+                                {historyWorkingIds.has(item.id) ? '生成中...' : '再次生成'}
                               </button>
                               <button
-                                style={styles.historyActionButton}
-                                onClick={() => deleteHistoryItem(item.id)}
+                                style={{
+                                  ...styles.historyActionButton,
+                                  ...(historyWorkingIds.has(item.id) ? styles.historyActionButtonDisabled : {}),
+                                }}
+                                onClick={() => confirmDeleteHistory(item.id)}
+                                disabled={historyWorkingIds.has(item.id)}
                               >
                                 删除
                               </button>
@@ -638,6 +711,30 @@ export default function Home() {
                         );
                       })
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {deleteConfirmId && (
+              <div style={styles.modalOverlay}>
+                <div style={styles.confirmCard}>
+                  <h3 style={styles.confirmTitle}>确认删除？</h3>
+                  <p style={styles.confirmText}>删除后无法恢复，是否继续？</p>
+                  <div style={styles.confirmActions}>
+                    <button
+                      style={{ ...styles.confirmButton, ...styles.confirmButtonSecondary }}
+                      onClick={cancelDeleteHistory}
+                    >
+                      取消
+                    </button>
+                    <button
+                      style={{ ...styles.confirmButton, ...styles.confirmButtonDanger }}
+                      onClick={() => deleteHistoryItem(deleteConfirmId)}
+                      disabled={historyWorkingIds.has(deleteConfirmId)}
+                    >
+                      {historyWorkingIds.has(deleteConfirmId) ? '删除中...' : '确认删除'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -730,36 +827,92 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '24px',
   },
   loadingButton: { opacity: 0.7, cursor: 'not-allowed' },
-  loadingCard: {
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 2000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+  },
+  modalCard: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#fff8f9',
-    borderRadius: '16px',
-    padding: '40px 24px',
-    marginBottom: '24px',
-    border: '2px dashed #ffcdd6',
+    background: '#fff',
+    borderRadius: '20px',
+    padding: '48px 36px',
+    maxWidth: '360px',
+    width: '100%',
+    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.2)',
   },
   loadingSpinner: {
-    width: '40px',
-    height: '40px',
-    border: '3px solid #ffe4e8',
-    borderTop: '3px solid #FF2442',
+    width: '44px',
+    height: '44px',
+    border: '4px solid #ffe4e8',
+    borderTop: '4px solid #FF2442',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
   },
   loadingText: {
-    marginTop: '16px',
-    fontSize: '16px',
+    marginTop: '20px',
+    fontSize: '18px',
     fontWeight: 'bold',
     color: '#FF2442',
   },
   loadingSub: {
-    marginTop: '8px',
-    fontSize: '13px',
+    marginTop: '10px',
+    fontSize: '14px',
     color: '#999',
     textAlign: 'center',
+    lineHeight: '1.6',
+  },
+  confirmCard: {
+    background: '#fff',
+    borderRadius: '16px',
+    padding: '28px',
+    maxWidth: '360px',
+    width: '100%',
+    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.2)',
+  },
+  confirmTitle: {
+    margin: '0 0 12px',
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  confirmText: {
+    margin: '0 0 24px',
+    fontSize: '14px',
+    color: '#666',
+    lineHeight: '1.6',
+  },
+  confirmActions: {
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'flex-end',
+  },
+  confirmButton: {
+    padding: '10px 20px',
+    borderRadius: '10px',
+    border: 'none',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+  },
+  confirmButtonSecondary: {
+    background: '#f5f5f5',
+    color: '#666',
+  },
+  confirmButtonDanger: {
+    background: '#FF2442',
+    color: '#fff',
   },
   error: { color: '#FF2442', marginBottom: '16px', fontSize: '14px' },
   resultSection: {
@@ -956,6 +1109,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#666',
     fontSize: '13px',
     cursor: 'pointer',
+  },
+  historyActionButtonDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
   },
   favoriteButton: {
     padding: '4px 8px',
