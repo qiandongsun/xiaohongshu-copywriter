@@ -318,6 +318,14 @@ export default function Home() {
         <div style={styles.header}>
           <div />
           <div style={styles.authControls}>
+            {isLoggedIn && (
+              <button
+                style={styles.historyButton}
+                onClick={() => setShowHistory(true)}
+              >
+                历史记录{history.length > 0 ? ` (${history.length})` : ''}
+              </button>
+            )}
             {checkingAuth ? (
               <span style={styles.authHint}>加载中...</span>
             ) : isLoggedIn ? (
@@ -514,105 +522,106 @@ export default function Home() {
               </div>
             )}
 
-            <div style={styles.historyToggle}>
-              <button
-                style={styles.historyToggleButton}
-                onClick={() => setShowHistory((s) => !s)}
-              >
-                {showHistory ? '收起历史记录' : `展开历史记录 (${history.length})`}
-              </button>
-            </div>
-
             {showHistory && (
-              <div style={styles.historySection}>
-                {historyLoading ? (
-                  <p style={styles.historyEmpty}>加载中...</p>
-                ) : history.length === 0 ? (
-                  <p style={styles.historyEmpty}>暂无生成记录</p>
-                ) : (
-                  history.map((item) => {
-                    const isExpanded = expandedHistoryIds.has(item.id);
-                    const hasVersions = item.versions && item.versions.length > 1;
-                    return (
-                      <div key={item.id} style={styles.historyItem}>
-                        <div style={styles.historyItemHeader}>
-                          <div>
-                            <span style={styles.historyTopic}>{truncate(item.topic, 20)}</span>
-                            <span style={styles.historyMeta}>
-                              {' '}
-                              · {item.category} · {item.style} · {formatTime(item.createdAt)}
-                              {hasVersions && (
-                                <span style={styles.historyVersionCount}> · {item.versions.length} 个版本</span>
-                              )}
-                            </span>
-                          </div>
-                          <button
-                            style={{
-                              ...styles.favoriteButton,
-                              ...(item.favorite ? styles.favoriteActive : {}),
-                            }}
-                            onClick={() => toggleFavorite(item)}
-                          >
-                            {item.favorite ? '★' : '☆'}
-                          </button>
-                        </div>
-
-                        {!isExpanded && (
-                          <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
-                        )}
-
-                        {isExpanded && hasVersions && (
-                          <div style={styles.historyVersions}>
-                            {item.versions.map((version, idx) => (
-                              <div key={idx} style={styles.historyVersionItem}>
-                                <div style={styles.historyVersionHeader}>
-                                  <span style={styles.historyVersionTitle}>版本 {idx + 1}</span>
-                                  <button
-                                    style={styles.historyActionButton}
-                                    onClick={() => handleCopy(version, `history-${item.id}-${idx}`)}
-                                  >
-                                    {copiedMap[`history-${item.id}-${idx}`] ? '已复制' : '复制'}
-                                  </button>
-                                </div>
-                                <pre style={styles.historyVersionContent}>{version}</pre>
+              <div style={styles.drawerOverlay} onClick={() => setShowHistory(false)}>
+                <div style={styles.drawer} onClick={(e) => e.stopPropagation()}>
+                  <div style={styles.drawerHeader}>
+                    <h3 style={styles.drawerTitle}>历史记录</h3>
+                    <button style={styles.drawerClose} onClick={() => setShowHistory(false)}>
+                      ✕
+                    </button>
+                  </div>
+                  <div style={styles.drawerContent}>
+                    {historyLoading ? (
+                      <p style={styles.historyEmpty}>加载中...</p>
+                    ) : history.length === 0 ? (
+                      <p style={styles.historyEmpty}>暂无生成记录</p>
+                    ) : (
+                      history.map((item) => {
+                        const isExpanded = expandedHistoryIds.has(item.id);
+                        const hasVersions = item.versions && item.versions.length > 1;
+                        return (
+                          <div key={item.id} style={styles.historyItem}>
+                            <div style={styles.historyItemHeader}>
+                              <div>
+                                <span style={styles.historyTopic}>{truncate(item.topic, 20)}</span>
+                                <span style={styles.historyMeta}>
+                                  {' '}
+                                  · {item.category} · {item.style} · {formatTime(item.createdAt)}
+                                  {hasVersions && (
+                                    <span style={styles.historyVersionCount}> · {item.versions.length} 个版本</span>
+                                  )}
+                                </span>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              <button
+                                style={{
+                                  ...styles.favoriteButton,
+                                  ...(item.favorite ? styles.favoriteActive : {}),
+                                }}
+                                onClick={() => toggleFavorite(item)}
+                              >
+                                {item.favorite ? '★' : '☆'}
+                              </button>
+                            </div>
 
-                        <div style={styles.historyActions}>
-                          {hasVersions && (
-                            <button
-                              style={styles.historyActionButton}
-                              onClick={() => toggleExpandHistory(item.id)}
-                            >
-                              {isExpanded ? '收起版本' : '查看版本'}
-                            </button>
-                          )}
-                          <button
-                            style={styles.historyActionButton}
-                            onClick={() => handleCopy(item.result, `history-${item.id}`)}
-                          >
-                            {copiedMap[`history-${item.id}`] ? '已复制' : '复制首条'}
-                          </button>
-                          <button
-                            style={styles.historyActionButton}
-                            onClick={() => regenerateFromHistory(item)}
-                            disabled={loading}
-                          >
-                            再次生成
-                          </button>
-                          <button
-                            style={styles.historyActionButton}
-                            onClick={() => deleteHistoryItem(item.id)}
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                            {!isExpanded && (
+                              <pre style={styles.historyContent}>{truncate(item.result, 120)}</pre>
+                            )}
+
+                            {isExpanded && hasVersions && (
+                              <div style={styles.historyVersions}>
+                                {item.versions.map((version, idx) => (
+                                  <div key={idx} style={styles.historyVersionItem}>
+                                    <div style={styles.historyVersionHeader}>
+                                      <span style={styles.historyVersionTitle}>版本 {idx + 1}</span>
+                                      <button
+                                        style={styles.historyActionButton}
+                                        onClick={() => handleCopy(version, `history-${item.id}-${idx}`)}
+                                      >
+                                        {copiedMap[`history-${item.id}-${idx}`] ? '已复制' : '复制'}
+                                      </button>
+                                    </div>
+                                    <pre style={styles.historyVersionContent}>{version}</pre>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div style={styles.historyActions}>
+                              {hasVersions && (
+                                <button
+                                  style={styles.historyActionButton}
+                                  onClick={() => toggleExpandHistory(item.id)}
+                                >
+                                  {isExpanded ? '收起版本' : '查看版本'}
+                                </button>
+                              )}
+                              <button
+                                style={styles.historyActionButton}
+                                onClick={() => handleCopy(item.result, `history-${item.id}`)}
+                              >
+                                {copiedMap[`history-${item.id}`] ? '已复制' : '复制首条'}
+                              </button>
+                              <button
+                                style={styles.historyActionButton}
+                                onClick={() => regenerateFromHistory(item)}
+                                disabled={loading}
+                              >
+                                再次生成
+                              </button>
+                              <button
+                                style={styles.historyActionButton}
+                                onClick={() => deleteHistoryItem(item.id)}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -756,25 +765,63 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#fff',
     borderColor: '#FF2442',
   },
-  historyToggle: {
-    display: 'flex',
-    justifyContent: 'center',
-    marginBottom: '24px',
-  },
-  historyToggleButton: {
-    padding: '8px 20px',
+  historyButton: {
+    padding: '8px 16px',
     borderRadius: '20px',
     border: '1px solid #FF2442',
     background: '#fff',
     color: '#FF2442',
     fontSize: '14px',
     cursor: 'pointer',
+    marginRight: '12px',
+    fontWeight: 600,
   },
-  historySection: {
-    background: '#fff8f9',
-    borderRadius: '16px',
-    padding: '16px',
-    marginBottom: '24px',
+  drawerOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0, 0, 0, 0.4)',
+    zIndex: 1000,
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  drawer: {
+    width: '100%',
+    maxWidth: '480px',
+    height: '100vh',
+    background: '#fff',
+    boxShadow: '-10px 0 40px rgba(0, 0, 0, 0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  drawerHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px 24px',
+    borderBottom: '1px solid #f0f0f0',
+  },
+  drawerTitle: {
+    margin: 0,
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  drawerClose: {
+    padding: '6px 12px',
+    borderRadius: '8px',
+    border: '1px solid #e0e0e0',
+    background: '#fff',
+    color: '#666',
+    fontSize: '16px',
+    cursor: 'pointer',
+  },
+  drawerContent: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '16px 24px 24px',
   },
   historyEmpty: {
     textAlign: 'center',
@@ -783,10 +830,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '20px',
   },
   historyItem: {
-    background: '#fff',
+    background: '#fff8f9',
     borderRadius: '12px',
     padding: '14px',
     marginBottom: '12px',
+    border: '1px solid #ffe4e8',
   },
   historyItemHeader: {
     display: 'flex',
@@ -821,7 +869,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '12px',
   },
   historyVersionItem: {
-    background: '#fff8f9',
+    background: '#fff',
     borderRadius: '10px',
     padding: '12px',
     marginBottom: '10px',
